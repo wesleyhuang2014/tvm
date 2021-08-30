@@ -2853,6 +2853,28 @@ def _unique(return_counts=True):
 
     return _impl
 
+def _random_uniform():
+    def _impl(inputs, attr, params, mod):
+        shape = attr['_output_shapes'][0]
+        seed = attr['seed']
+        seed2 = attr['seed2']
+        dtype = attr['dtype'].name
+
+        #key = _op.random.threefry_key(0)
+
+        if shape[0] == -1:
+           shape[0] = 1
+
+        if seed != 0:
+            #key = _op.random.threefry_key(seed)
+            np.random.seed(seed)
+        elif seed2 !=0:
+            #key = _op.random.threefry_key(seed2)
+            np.random.seed(seed2)
+        #return _op.random.uniform(key = key, shape = shape, dtype = dtype)
+        return np.random.uniform(size=shape).astype(dtype)
+
+    return _impl
 
 # _convert_map defines maps of name to converter functor(callable)
 # for 1 to 1 mapping, use Renamer if nothing but name is different
@@ -2964,6 +2986,7 @@ _convert_map = {
     "PadV2": _pad("PadV2"),
     "Pow": _elemwise("power"),
     "Prod": _prod(),
+    "RandomUniform": _random_uniform(),
     "Range": _range(),
     "Rank": _rank(),
     "RealDiv": _elemwise("divide"),
