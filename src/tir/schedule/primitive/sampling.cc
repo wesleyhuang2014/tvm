@@ -19,11 +19,22 @@
 
 #include <random>
 
-#include "../primitive.h"
 #include "../utils.h"
 
 namespace tvm {
 namespace tir {
+
+int SampleInt(support::LinearCongruentialEngine::TRandState* rand_state, int min_inclusive,
+              int max_exclusive) {
+  CHECK(min_inclusive < max_exclusive)
+      << "ValueError: max_exclusive must be greater than min_inclusive.";
+  if (min_inclusive + 1 == max_exclusive) {
+    return min_inclusive;
+  }
+  support::LinearCongruentialEngine rand_(rand_state);
+  std::uniform_int_distribution<int> dist(min_inclusive, max_exclusive - 1);
+  return dist(rand_);
+}
 
 int64_t SampleCategorical(support::LinearCongruentialEngine::TRandState* rand_state,
                           const Array<Integer>& candidates, const Array<FloatImm>& probs,
@@ -50,6 +61,8 @@ int64_t SampleCategorical(support::LinearCongruentialEngine::TRandState* rand_st
   *decision = Integer(i);  // decision is guaranteed not to be nullptr.
   return candidates[i];
 }
+
+/******** InstructionKind Registration ********/
 
 struct SampleCategoricalTraits : public UnpackedInstTraits<SampleCategoricalTraits> {
   static constexpr const char* kName = "SampleCategorical";
@@ -79,7 +92,8 @@ struct SampleCategoricalTraits : public UnpackedInstTraits<SampleCategoricalTrai
     return py.Str();
   }
 
-  friend struct UnpackedInstTraits<SampleCategoricalTraits>;
+  template <typename>
+  friend struct ::tvm::tir::UnpackedInstTraits;
 };
 
 TVM_REGISTER_INST_KIND_TRAITS(SampleCategoricalTraits);

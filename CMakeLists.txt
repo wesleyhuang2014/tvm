@@ -47,10 +47,12 @@ tvm_option(HIDE_PRIVATE_SYMBOLS "Compile with -fvisibility=hidden." OFF)
 tvm_option(USE_TF_TVMDSOOP "Build with TensorFlow TVMDSOOp" OFF)
 tvm_option(USE_FALLBACK_STL_MAP "Use TVM's POD compatible Map" OFF)
 tvm_option(USE_ETHOSN "Build with Arm Ethos-N" OFF)
+tvm_option(USE_CMSISNN "Build with Arm CMSIS-NN" OFF)
 tvm_option(INDEX_DEFAULT_I64 "Defaults the index datatype to int64" ON)
 tvm_option(USE_LIBBACKTRACE "Build libbacktrace to supply linenumbers on stack traces" AUTO)
 tvm_option(BUILD_STATIC_RUNTIME "Build static version of libtvm_runtime" OFF)
 tvm_option(USE_PAPI "Use Performance Application Programming Interface (PAPI) to read performance counters" OFF)
+tvm_option(USE_GTEST "Use GoogleTest for C++ sanity tests" AUTO)
 
 # 3rdparty libraries
 tvm_option(DLPACK_PATH "Path to DLPACK" "3rdparty/dlpack/include")
@@ -239,6 +241,7 @@ assign_source_group("Include" ${GROUP_INCLUDE})
 # Source file lists
 file(GLOB_RECURSE COMPILER_SRCS
     src/auto_scheduler/*.cc
+    src/meta_schedule/*.cc
     src/node/*.cc
     src/ir/*.cc
     src/arith/*.cc
@@ -304,9 +307,12 @@ if(BUILD_FOR_HEXAGON)
   # static one.
   if(NOT BUILD_STATIC_RUNTIME)
     list(APPEND RUNTIME_SRCS src/runtime/hexagon/hexagon_posix.cc)
+    # Allow undefined symbols (there will be some from libc).
+    set(TVM_NO_UNDEFINED_SYMBOLS "")
   endif()
 
   add_definitions(-D_MACH_I32=int)
+  add_definitions(-DDMLC_CXX11_THREAD_LOCAL=0)
 endif()
 
 # Package runtime rules
@@ -357,7 +363,7 @@ endif(USE_GRAPH_EXECUTOR)
 
 # convert old options for profiler
 if(USE_GRAPH_EXECUTOR_DEBUG)
-  message(WARNING "USE_GRAPH_EXECUTOR renamed to USE_PROFILER. Please update your config.cmake")
+  message(WARNING "USE_GRAPH_EXECUTOR_DEBUG renamed to USE_PROFILER. Please update your config.cmake")
   unset(USE_GRAPH_EXECUTOR_DEBUG CACHE)
   set(USE_PROFILER ON)
 endif()
@@ -380,13 +386,29 @@ if(USE_PROFILER)
 endif(USE_PROFILER)
 
 # Enable ctest if gtest is available
-find_path(GTEST_INCLUDE_DIR gtest/gtest.h)
-find_library(GTEST_LIB gtest "$ENV{GTEST_LIB}")
-if(GTEST_INCLUDE_DIR AND GTEST_LIB)
-  enable_testing()
-  include(CTest)
-  include(GoogleTest)
+if(USE_GTEST)
+  # Check env var for backward compatibility. A better way to specify package
+  # locations is to use CMAKE_PREFIX_PATH or other standard cmake mechanism
+  # (see cmake documentation for `find_package`).
+  set(GTEST_ROOT "$ENV{GTEST_LIB}")
+  if("${USE_GTEST}" STREQUAL "AUTO")
+    # If USE_GTEST is AUTO, treat GTest as optional: enable if found.
+    find_package(GTest)
+  elseif("${USE_GTEST}" MATCHES ${IS_TRUE_PATTERN})
+    # USE_GTEST is set to ON, TRUE, etc. Treat GTest as a required package.
+    find_package(GTest REQUIRED)
+  endif()
+  if(GTEST_FOUND)
+    enable_testing()
+    include(CTest)
+  endif()
 endif()
+
+if(USE_PIPELINE_EXECUTOR)
+  message(STATUS "Build with Pipeline Executor support...")
+  file(GLOB RUNTIME_PIPELINE_SRCS src/runtime/pipeline/*.cc)
+  list(APPEND RUNTIME_SRCS ${RUNTIME_PIPELINE_SRCS})
+endif(USE_PIPELINE_EXECUTOR)
 
 # Module rules
 include(cmake/modules/VTA.cmake)
@@ -401,9 +423,12 @@ include(cmake/modules/ROCM.cmake)
 include(cmake/modules/LLVM.cmake)
 include(cmake/modules/Micro.cmake)
 include(cmake/modules/contrib/EthosN.cmake)
+include(cmake/modules/contrib/CMSISNN.cmake)
+include(cmake/modules/contrib/EthosU.cmake)
 include(cmake/modules/contrib/BLAS.cmake)
 include(cmake/modules/contrib/CODEGENC.cmake)
 include(cmake/modules/contrib/DNNL.cmake)
+include(cmake/modules/contrib/ExampleTargetHooks.cmake)
 include(cmake/modules/contrib/Random.cmake)
 include(cmake/modules/contrib/Posit.cmake)
 include(cmake/modules/contrib/MicroStandaloneRuntime.cmake)
@@ -571,22 +596,13 @@ endif()
 
 # Create the `cpptest` target if we can find GTest.  If not, we create dummy
 # targets that give the user an informative error message.
-if(GTEST_INCLUDE_DIR AND GTEST_LIB)
-  file(GLOB TEST_SRCS tests/cpp/*.cc)
+if(GTEST_FOUND)
+  file(GLOB_RECURSE TEST_SRCS tests/cpp/*.cc)
   add_executable(cpptest ${TEST_SRCS})
-  target_include_directories(cpptest SYSTEM PUBLIC ${GTEST_INCLUDE_DIR})
-  target_link_libraries(cpptest PRIVATE ${TVM_TEST_LIBRARY_NAME} ${GTEST_LIB} gtest_main pthread dl)
+  target_link_libraries(cpptest PRIVATE ${TVM_TEST_LIBRARY_NAME} GTest::GTest GTest::Main pthread dl)
   set_target_properties(cpptest PROPERTIES EXCLUDE_FROM_ALL 1)
   set_target_properties(cpptest PROPERTIES EXCLUDE_FROM_DEFAULT_BUILD 1)
   gtest_discover_tests(cpptest)
-elseif(NOT GTEST_INCLUDE_DIR)
-  add_custom_target(cpptest
-      COMMAND echo "Missing Google Test headers in include path"
-      COMMAND exit 1)
-elseif(NOT GTEST_LIB)
-  add_custom_target(cpptest
-      COMMAND echo "Missing Google Test library"
-      COMMAND exit 1)
 endif()
 
 # Custom targets

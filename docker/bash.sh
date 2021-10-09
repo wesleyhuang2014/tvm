@@ -22,7 +22,7 @@
 #
 # Usage: docker/bash.sh [-i|--interactive] [--net=host] [-t|--tty]
 #          [--mount MOUNT_DIR] [--repo-mount-point REPO_MOUNT_POINT]
-#          [--dry-run]
+#          [--dry-run] [--name NAME]
 #          <DOCKER_IMAGE_NAME> [--] [COMMAND]
 #
 # Usage: docker/bash.sh <CONTAINER_NAME>
@@ -38,9 +38,9 @@ set -euo pipefail
 
 function show_usage() {
     cat <<EOF
-Usage: docker/bash.sh [-i|--interactive] [--net=host]
+Usage: docker/bash.sh [-i|--interactive] [--net=host] [-t|--tty]
          [--mount MOUNT_DIR] [--repo-mount-point REPO_MOUNT_POINT]
-         [--dry-run]
+         [--dry-run] [--name NAME]
          <DOCKER_IMAGE_NAME> [--] [COMMAND]
 
 -h, --help
@@ -85,6 +85,11 @@ Usage: docker/bash.sh [-i|--interactive] [--net=host]
 
     Print the docker command to be run, but do not execute it.
 
+--name
+
+    Set the name of the docker container, and the hostname that will
+    appear inside the container.
+
 DOCKER_IMAGE_NAME
 
     The name of the docker container to be run.  This can be an
@@ -95,7 +100,7 @@ DOCKER_IMAGE_NAME
 COMMAND
 
     The command to be run inside the docker container.  If this is set
-    to "bash", both the --interactive and --net=host flags are set.
+    to "bash", the --interactive, --tty and --net=host flags are set.
     If no command is specified, defaults to "bash".  If the command
     contains dash-prefixed arguments, the command should be preceded
     by -- to indicate arguments that are not intended for bash.sh.
@@ -118,6 +123,7 @@ USE_NET_HOST=false
 DOCKER_IMAGE_NAME=
 COMMAND=bash
 MOUNT_DIRS=( )
+CONTAINER_NAME=
 
 # TODO(Lunderberg): Remove this if statement and always set to
 # "${REPO_DIR}".  The consistent directory for Jenkins is currently
@@ -180,6 +186,15 @@ while (( $# )); do
             shift
             ;;
 
+        --name)
+            if [[ -n "$2" ]]; then
+                CONTAINER_NAME="$2"
+                shift 2
+            else
+                parse_error 'ERROR: --name requires a non empty argument'
+            fi
+            ;;
+
         --dry-run)
             DRY_RUN=true
             shift
@@ -235,6 +250,7 @@ fi
 
 if [[ ${COMMAND[@]+"${COMMAND[@]}"} = bash ]]; then
     INTERACTIVE=true
+    TTY=true
     USE_NET_HOST=true
 fi
 
@@ -309,6 +325,11 @@ fi
 
 if ${TTY}; then
     DOCKER_FLAGS+=( --tty )
+fi
+
+# Setup the docker name and the hostname inside the container
+if [[ ! -z "${CONTAINER_NAME}" ]]; then
+    DOCKER_FLAGS+=( --name ${CONTAINER_NAME} --hostname ${CONTAINER_NAME})
 fi
 
 # Expose external directories to the docker container

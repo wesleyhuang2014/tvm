@@ -48,6 +48,8 @@ def _convert(arg, cargs):
         dtype = "int32" if isinstance(arg, (_base.integer_types, bool)) else "float32"
         value = tvm.nd.array(np.array(arg, dtype=dtype), device=tvm.cpu(0))
         cargs.append(value)
+    elif isinstance(arg, str):
+        cargs.append(arg)
     else:
         raise TypeError("Unsupported type: %s" % (type(arg)))
 
@@ -596,7 +598,7 @@ class VirtualMachine(object):
                 repeat=repeat,
                 number=number,
                 min_repeat_ms=min_repeat_ms,
-            )(func_name, device.device_type, device.device_id, *packed_args)
+            )(func_name, device.device_type % RPC_SESS_MASK, device.device_id, *packed_args)
         if args or kwargs:
             self.set_input(func_name, *args, **kwargs)
         return self.module.time_evaluator(
