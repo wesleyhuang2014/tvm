@@ -151,6 +151,7 @@ if(MSVC)
   # unknown pragma
   add_compile_options(/wd4068)
 else(MSVC)
+  set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -D_GLIBCXX_USE_CXX11_ABI=0")
   set(WARNING_FLAG -Wall)
   if ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
     message(STATUS "Build in Debug mode")
